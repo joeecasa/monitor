@@ -54,8 +54,8 @@ async function enviarEmail(cat, precio) {
   const link = `https://collect.fifa.com/marketplace?tags=${cat.toLowerCase()}-m86`;
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    port: 587,
+    secure: false,
     family: 4,
     auth: {
       user: CONFIG.EMAIL.usuario,
