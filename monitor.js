@@ -16,9 +16,9 @@ const { Resend } = require("resend");
 //  CONFIGURACIÓN
 // ──────────────────────────────────────────────
 const CONFIG = {
-  PRECIO_MAXIMO: 2100,
+  PRECIO_MAXIMO: 1200,
   INTERVALO_MINUTOS: 5,
-  CATEGORIAS: ["CAT3", "CAT2", "CAT1"],
+  CATEGORIAS: ["CAT4","CAT3", "CAT2", "CAT1"],
   EMAIL: {
     usuario: "j.casa.marquez@gmail.com",
     password: process.env.GMAIL_PASSWORD,
