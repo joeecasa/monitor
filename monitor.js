@@ -16,7 +16,7 @@ const { Resend } = require("resend");
 //  CONFIGURACIÓN
 // ──────────────────────────────────────────────
 const CONFIG = {
-  PRECIO_MAXIMO: 1200,
+  PRECIO_MAXIMO: 1500,
   INTERVALO_MINUTOS: 5,
   CATEGORIAS: ["CAT4","CAT3", "CAT2", "CAT1"],
   EMAIL: {
@@ -93,22 +93,32 @@ async function scrapePrecios() {
 
     const filas = await page.evaluate((matchId) => {
       const resultados = [];
-      const rows = document.querySelectorAll("tr");
+      const rows = Array.from(document.querySelectorAll("tr"));
+      let enSeccionMatch = false;
 
-      rows.forEach((row) => {
-        const texto = row.innerText || "";
-        if (!texto.includes(matchId)) return;
+      for (let i = 0; i < rows.length; i++) {
+        const texto = rows[i].innerText || "";
 
-        const catMatch = texto.match(/CAT[123]/);
-        if (!catMatch) return;
+        if (texto.includes(matchId)) {
+          enSeccionMatch = true;
+        }
 
-        const precios = texto.match(/\$[\d,]+\.?\d*/g);
+        if (!enSeccionMatch) continue;
 
-        resultados.push({
-          categoria: catMatch[0],
-          precios: precios || [],
-        });
-      });
+        // Si encontramos otro partido distinto, paramos
+        if (enSeccionMatch && !texto.includes(matchId) && /\bM\d{2,3}\b/.test(texto)) {
+          break;
+        }
+
+        const catMatch = texto.match(/CAT[1-4]/);
+        if (catMatch) {
+          const precios = texto.match(/\$[\d,]+\.?\d*/g);
+          resultados.push({
+            categoria: catMatch[0],
+            precios: precios || [],
+          });
+        }
+      }
 
       return resultados;
     }, MATCH_ID);
