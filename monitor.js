@@ -17,7 +17,7 @@ require("dotenv").config();
 //  CONFIGURACIÓN
 // ──────────────────────────────────────────────
 const CONFIG = {
-  PRECIO_MAXIMO: 2000,
+  PRECIO_MAXIMO: 1500,
   INTERVALO_MINUTOS: 5,
   CATEGORIAS: ["CAT4","CAT3", "CAT2", "CAT1"],
   EMAIL: {
