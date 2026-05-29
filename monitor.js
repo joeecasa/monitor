@@ -10,7 +10,7 @@
 // ============================================================
 
 const puppeteer = require("puppeteer");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
 // ──────────────────────────────────────────────
 //  CONFIGURACIÓN
@@ -52,19 +52,10 @@ function parsePrecio(str) {
 
 async function enviarEmail(cat, precio) {
   const link = `https://collect.fifa.com/marketplace?tags=${cat.toLowerCase()}-m86`;
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    family: 4,
-    auth: {
-      user: CONFIG.EMAIL.usuario,
-      pass: CONFIG.EMAIL.password,
-    },
-  });
+  const resend = new Resend(process.env.RESEND_API_KEY);
 
-  await transporter.sendMail({
-    from: `"Monitor M86" <${CONFIG.EMAIL.usuario}>`,
+  await resend.emails.send({
+    from: "Monitor M86 <onboarding@resend.dev>",
     to: CONFIG.EMAIL.destinatario,
     subject: `ALERTA M86 Miami — ${cat} a $${precio} USD`,
     html: `
