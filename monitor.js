@@ -17,7 +17,7 @@ const nodemailer = require("nodemailer");
 // ──────────────────────────────────────────────
 const CONFIG = {
   PRECIO_MAXIMO: 2100,
-  INTERVALO_MINUTOS: 15,
+  INTERVALO_MINUTOS: 5,
   CATEGORIAS: ["CAT3", "CAT2", "CAT1"],
   EMAIL: {
     usuario: "j.casa.marquez@gmail.com",
@@ -53,7 +53,10 @@ function parsePrecio(str) {
 async function enviarEmail(cat, precio) {
   const link = `https://collect.fifa.com/marketplace?tags=${cat.toLowerCase()}-m86`;
   const transporter = nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    family: 4,
     auth: {
       user: CONFIG.EMAIL.usuario,
       pass: CONFIG.EMAIL.password,
