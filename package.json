@@ -1,0 +1,12 @@
+{
+  "name": "monitor-fifa-m86",
+  "version": "1.0.0",
+  "main": "monitor.js",
+  "scripts": {
+    "start": "node monitor.js"
+  },
+  "dependencies": {
+    "nodemailer": "^8.0.10",
+    "puppeteer": "^25.1.0"
+  }
+}
