@@ -72,15 +72,32 @@ async function enviarEmail(cat, precio) {
   log(`Email enviado a ${CONFIG.EMAIL.destinatario}`, C.verde);
 }
 
-async function scrapePrecios() {
-  const browser = await puppeteer.launch({
+const BROWSER_ARGS = [
+  "--no-sandbox",
+  "--disable-setuid-sandbox",
+  "--no-zygote",
+  "--disable-dev-shm-usage",
+  "--disable-gpu",
+];
+
+let browser = null;
+
+async function getBrowser() {
+  if (browser && browser.connected) return browser;
+  browser = await puppeteer.launch({
     headless: "new",
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: BROWSER_ARGS,
   });
+  browser.on("disconnected", () => { browser = null; });
+  return browser;
+}
+
+async function scrapePrecios() {
+  const b = await getBrowser();
+  const page = await b.newPage();
 
   try {
-    const page = await browser.newPage();
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     );
@@ -126,7 +143,7 @@ async function scrapePrecios() {
 
     return filas;
   } finally {
-    await browser.close();
+    await page.close();
   }
 }
 

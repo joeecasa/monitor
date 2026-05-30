@@ -2,6 +2,8 @@ FROM node:20-slim
 
 RUN apt-get update && apt-get install -y \
     chromium \
+    ca-certificates \
+    fonts-liberation \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
