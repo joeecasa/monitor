@@ -17,7 +17,7 @@ require("dotenv").config();
 //  CONFIGURACIÓN
 // ──────────────────────────────────────────────
 const CONFIG = {
-  PRECIO_MAXIMO: 1300,
+  PRECIO_MAXIMO: 2000,
   INTERVALO_MINUTOS: 5,
   CATEGORIAS: ["CAT4","CAT3", "CAT2", "CAT1"],
   EMAIL: {
@@ -56,7 +56,7 @@ async function enviarNtfy(cat, precio) {
   await fetch(`https://ntfy.sh/${process.env.NTFY_TOPIC}`, {
     method: "POST",
     headers: {
-      "Title": `ALERTA M86 — ${cat} a $${precio} USD`,
+      "Title": `ALERTA M86 - ${cat} a $${precio} USD`,
       "Priority": "urgent",
       "Tags": "soccer,rotating_light",
       "Click": link,
