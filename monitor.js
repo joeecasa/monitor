@@ -57,11 +57,9 @@ function parsePrecio(str) {
 const SHEET_ID = "16Rj3LfZkU-eWC2wd6FP3if3nPu32O6-Q-VB36_hGHwY";
 
 async function getSheetsClient() {
+  const creds = JSON.parse(Buffer.from(process.env.GOOGLE_CREDENTIALS_B64, "base64").toString());
   const auth = new google.auth.GoogleAuth({
-    credentials: {
-      client_email: process.env.GOOGLE_CLIENT_EMAIL,
-      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-    },
+    credentials: creds,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
   return google.sheets({ version: "v4", auth });
