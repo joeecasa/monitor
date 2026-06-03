@@ -11,6 +11,7 @@
 
 const puppeteer = require("puppeteer");
 const { Resend } = require("resend");
+const { google } = require("googleapis");
 const fs = require("fs");
 require("dotenv").config();
 
@@ -53,6 +54,50 @@ function parsePrecio(str) {
   return isNaN(n) ? null : n;
 }
 
+const SHEET_ID = "16Rj3LfZkU-eWC2wd6FP3if3nPu32O6-Q-VB36_hGHwY";
+
+async function getSheetsClient() {
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    },
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+  return google.sheets({ version: "v4", auth });
+}
+
+async function inicializarSheet() {
+  const sheets = await getSheetsClient();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range: "A1",
+  });
+  if (!res.data.values) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: "A1",
+      valueInputOption: "RAW",
+      resource: { values: [["Fecha", "Hora", "CAT4", "CAT3", "CAT2", "CAT1"]] },
+    });
+  }
+}
+
+async function escribirEnSheets(precios) {
+  const ahora = new Date();
+  const fecha = ahora.toLocaleDateString("es-AR");
+  const hora = ahora.toLocaleTimeString("es-AR");
+  const sheets = await getSheetsClient();
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SHEET_ID,
+    range: "A:F",
+    valueInputOption: "RAW",
+    resource: {
+      values: [[fecha, hora, precios.CAT4 ?? "", precios.CAT3 ?? "", precios.CAT2 ?? "", precios.CAT1 ?? ""]],
+    },
+  });
+}
+
 const HISTORIAL_FILE = "historial.json";
 
 function cargarHistorial() {
@@ -70,13 +115,19 @@ function guardarHistorial(h) {
 let historial = cargarHistorial();
 let resumenEnviadoHoy = null;
 
-function registrarPrecios(precios) {
+async function registrarPrecios(precios) {
   const ahora = new Date();
   const fecha = ahora.toLocaleDateString("es-AR");
   const hora = ahora.toLocaleTimeString("es-AR");
   if (!historial[fecha]) historial[fecha] = [];
   historial[fecha].push({ hora, ...precios });
   guardarHistorial(historial);
+  try {
+    await escribirEnSheets(precios);
+    log("Sheets actualizado", C.cyan);
+  } catch (err) {
+    log(`Error Sheets: ${err.message}`, C.rojo);
+  }
 }
 
 async function enviarNtfy(cat, precio) {
@@ -348,6 +399,10 @@ console.log(`
   Email:             ${CONFIG.EMAIL.destinatario}
 
 `);
+
+inicializarSheet()
+  .then(() => log("Google Sheets conectado", C.verde))
+  .catch(err => log(`Error conectando Sheets: ${err.message}`, C.rojo));
 
 revisar();
 setInterval(revisar, CONFIG.INTERVALO_MINUTOS * 60 * 1000);

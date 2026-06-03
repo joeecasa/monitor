@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "dotenv": "^17.4.2",
+    "googleapis": "^173.0.0",
     "puppeteer": "^25.1.0",
     "resend": "^4.0.0"
   }
