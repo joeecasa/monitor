@@ -17,7 +17,7 @@ require("dotenv").config();
 //  CONFIGURACIÓN
 // ──────────────────────────────────────────────
 const CONFIG = {
-  PRECIO_MAXIMO: 1500,
+  PRECIO_MAXIMO: 1300,
   INTERVALO_MINUTOS: 5,
   CATEGORIAS: ["CAT4","CAT3", "CAT2", "CAT1"],
   EMAIL: {
@@ -49,6 +49,21 @@ function parsePrecio(str) {
   if (!str) return null;
   const n = parseFloat(str.replace(/[^0-9.]/g, ""));
   return isNaN(n) ? null : n;
+}
+
+async function enviarNtfy(cat, precio) {
+  const link = `https://collect.fifa.com/marketplace?tags=${cat.toLowerCase()}-m86`;
+  await fetch(`https://ntfy.sh/${process.env.NTFY_TOPIC}`, {
+    method: "POST",
+    headers: {
+      "Title": `ALERTA M86 — ${cat} a $${precio} USD`,
+      "Priority": "urgent",
+      "Tags": "soccer,rotating_light",
+      "Click": link,
+    },
+    body: `${cat} a $${precio} USD — por debajo de $${CONFIG.PRECIO_MAXIMO}. Toca para comprar.`,
+  });
+  log(`Ntfy enviado`, C.verde);
 }
 
 async function enviarEmail(cat, precio) {
@@ -192,9 +207,12 @@ async function revisar() {
       const link = `https://collect.fifa.com/marketplace?tags=${cat.toLowerCase()}-m86`;
       log(`  DEBAJO DE $${CONFIG.PRECIO_MAXIMO}! Compra: ${link}`, C.verde + C.bold);
       try {
-        await enviarEmail(cat, precio);
+        await Promise.all([
+          enviarNtfy(cat, precio),
+          enviarEmail(cat, precio),
+        ]);
       } catch (err) {
-        log(`Error enviando email: ${err.message}`, C.rojo);
+        log(`Error enviando alerta: ${err.message}`, C.rojo);
       }
     }
   }
