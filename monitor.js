@@ -43,8 +43,12 @@ const C = {
   reset:    "\x1b[0m",
 };
 
+function ahoraAR() {
+  return new Date(new Date().toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+}
+
 function log(msg, color = C.reset) {
-  const hora = new Date().toLocaleTimeString("es-AR");
+  const hora = ahoraAR().toLocaleTimeString("es-AR");
   console.log(`${C.cyan}[${hora}]${C.reset} ${color}${msg}${C.reset}`);
 }
 
@@ -85,7 +89,7 @@ async function inicializarSheet() {
 }
 
 async function escribirEnSheets(precios) {
-  const ahora = new Date();
+  const ahora = ahoraAR();
   const fecha = ahora.toLocaleDateString("es-AR");
   const hora = ahora.toLocaleTimeString("es-AR");
   const sheets = await getSheetsClient();
@@ -117,7 +121,7 @@ let historial = cargarHistorial();
 let resumenEnviadoHoy = null;
 
 async function registrarPrecios(precios) {
-  const ahora = new Date();
+  const ahora = ahoraAR();
   const fecha = ahora.toLocaleDateString("es-AR");
   const hora = ahora.toLocaleTimeString("es-AR");
   if (!historial[fecha]) historial[fecha] = [];
@@ -366,7 +370,7 @@ async function revisar() {
 
   registrarPrecios(preciosDia);
 
-  const ahora = new Date();
+  const ahora = ahoraAR();
   const fecha = ahora.toLocaleDateString("es-AR");
   if (ahora.getHours() === CONFIG.HORA_RESUMEN && resumenEnviadoHoy !== fecha) {
     resumenEnviadoHoy = fecha;
@@ -378,7 +382,7 @@ async function revisar() {
   }
 
   if (!hayAlerta) {
-    const proxima = new Date(Date.now() + CONFIG.INTERVALO_MINUTOS * 60 * 1000);
+    const proxima = new Date(ahoraAR().getTime() + CONFIG.INTERVALO_MINUTOS * 60 * 1000);
     log(`Sin alertas. Proxima revision: ${proxima.toLocaleTimeString("es-AR")}`, C.reset);
   }
 
