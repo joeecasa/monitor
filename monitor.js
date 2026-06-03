@@ -11,6 +11,7 @@
 
 const puppeteer = require("puppeteer");
 const { Resend } = require("resend");
+const fs = require("fs");
 require("dotenv").config();
 
 // ──────────────────────────────────────────────
@@ -19,6 +20,7 @@ require("dotenv").config();
 const CONFIG = {
   PRECIO_MAXIMO: 1500,
   INTERVALO_MINUTOS: 5,
+  HORA_RESUMEN: 23,
   CATEGORIAS: ["CAT4","CAT3", "CAT2", "CAT1"],
   EMAIL: {
     usuario: "j.casa.marquez@gmail.com",
@@ -49,6 +51,32 @@ function parsePrecio(str) {
   if (!str) return null;
   const n = parseFloat(str.replace(/[^0-9.]/g, ""));
   return isNaN(n) ? null : n;
+}
+
+const HISTORIAL_FILE = "historial.json";
+
+function cargarHistorial() {
+  try {
+    if (fs.existsSync(HISTORIAL_FILE))
+      return JSON.parse(fs.readFileSync(HISTORIAL_FILE, "utf8"));
+  } catch {}
+  return {};
+}
+
+function guardarHistorial(h) {
+  fs.writeFileSync(HISTORIAL_FILE, JSON.stringify(h, null, 2));
+}
+
+let historial = cargarHistorial();
+let resumenEnviadoHoy = null;
+
+function registrarPrecios(precios) {
+  const ahora = new Date();
+  const fecha = ahora.toLocaleDateString("es-AR");
+  const hora = ahora.toLocaleTimeString("es-AR");
+  if (!historial[fecha]) historial[fecha] = [];
+  historial[fecha].push({ hora, ...precios });
+  guardarHistorial(historial);
 }
 
 async function enviarNtfy(cat, precio) {
@@ -85,6 +113,70 @@ async function enviarEmail(cat, precio) {
   });
 
   log(`Email enviado a ${CONFIG.EMAIL.destinatario}`, C.verde);
+}
+
+async function enviarResumen(fecha) {
+  const entradas = historial[fecha] || [];
+  if (entradas.length === 0) return;
+
+  const resumen = {};
+  for (const cat of CONFIG.CATEGORIAS) {
+    const precios = entradas.map(e => e[cat]).filter(p => p != null);
+    resumen[cat] = precios.length === 0 ? null : {
+      min: Math.min(...precios),
+      max: Math.max(...precios),
+      ultimo: precios[precios.length - 1],
+      lecturas: precios.length,
+    };
+  }
+
+  const filasHtml = CONFIG.CATEGORIAS.map(cat => {
+    const r = resumen[cat];
+    if (!r) return `<tr><td>${cat}</td><td colspan="4" style="color:gray">Sin datos</td></tr>`;
+    return `<tr>
+      <td><strong>${cat}</strong></td>
+      <td>$${r.min}</td>
+      <td>$${r.max}</td>
+      <td>$${r.ultimo}</td>
+      <td>${r.lecturas}</td>
+    </tr>`;
+  }).join("");
+
+  const html = `
+    <h2>Resumen diario M86 - ${fecha}</h2>
+    <p>Umbral actual: $${CONFIG.PRECIO_MAXIMO} USD | Lecturas totales: ${entradas.length}</p>
+    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse">
+      <tr style="background:#f0f0f0">
+        <th>Categoria</th><th>Minimo</th><th>Maximo</th><th>Ultimo</th><th>Lecturas</th>
+      </tr>
+      ${filasHtml}
+    </table>
+  `;
+
+  const lineasNtfy = CONFIG.CATEGORIAS.map(cat => {
+    const r = resumen[cat];
+    return r ? `${cat}: min $${r.min} / ultimo $${r.ultimo}` : `${cat}: sin datos`;
+  }).join("\n");
+
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  await Promise.all([
+    resend.emails.send({
+      from: "Monitor M86 <onboarding@resend.dev>",
+      to: CONFIG.EMAIL.destinatario,
+      subject: `Resumen diario M86 - ${fecha}`,
+      html,
+    }),
+    fetch(`https://ntfy.sh/${process.env.NTFY_TOPIC}`, {
+      method: "POST",
+      headers: {
+        "Title": `Resumen M86 - ${fecha}`,
+        "Tags": "bar_chart",
+      },
+      body: lineasNtfy,
+    }),
+  ]);
+
+  log(`Resumen diario enviado (${entradas.length} lecturas)`, C.verde);
 }
 
 const BROWSER_ARGS = [
@@ -179,17 +271,20 @@ async function revisar() {
   }
 
   let hayAlerta = false;
+  const preciosDia = {};
 
   for (const cat of CONFIG.CATEGORIAS) {
     const fila = filas.find((f) => f.categoria === cat);
 
     if (!fila) {
       log(`  ${cat}: No existe para este partido`, C.amarillo);
+      preciosDia[cat] = null;
       continue;
     }
 
     const ultimoPrecio = fila.precios[fila.precios.length - 1];
     const precio = parsePrecio(ultimoPrecio);
+    preciosDia[cat] = precio;
 
     if (!precio) {
       log(`  ${cat}: Sin listings ahora`, C.amarillo);
@@ -214,6 +309,19 @@ async function revisar() {
       } catch (err) {
         log(`Error enviando alerta: ${err.message}`, C.rojo);
       }
+    }
+  }
+
+  registrarPrecios(preciosDia);
+
+  const ahora = new Date();
+  const fecha = ahora.toLocaleDateString("es-AR");
+  if (ahora.getHours() === CONFIG.HORA_RESUMEN && resumenEnviadoHoy !== fecha) {
+    resumenEnviadoHoy = fecha;
+    try {
+      await enviarResumen(fecha);
+    } catch (err) {
+      log(`Error enviando resumen: ${err.message}`, C.rojo);
     }
   }
 
