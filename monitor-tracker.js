@@ -231,49 +231,23 @@ async function extraerDatos(page) {
     function extraerDeNodo(nodo) {
       const texto = nodo.innerText || nodo.textContent || "";
 
-      // Precio "From $X" — el más barato disponible en la card
+      // Solo aceptar precio "From $X" — ignora cualquier otro número
       const fromMatch = texto.match(/[Ff]rom\s*\$([\d,]+\.?\d*)/);
-      const precioFrom = fromMatch ? parsePrecio(fromMatch[1]) : null;
+      if (!fromMatch) return null;
+      const precio = parsePrecio(fromMatch[1]);
+      if (!precio || precio < 151) return null;
 
-      // Fallback: cualquier precio con $
-      const todosPrecios = (texto.match(/\$[\d,]+\.?\d*/g) || [])
-        .map(p => parsePrecio(p))
-        .filter(Boolean);
-
-      const precios = precioFrom ? [precioFrom] : todosPrecios;
-      if (precios.length === 0) return null;
-
-      // Nombre del partido: "X vs Y"
-      const vsMatch = texto.match(/[\wÀ-ž][\w\sÀ-ž]* vs [\w\sÀ-ž]+/i);
-      const partido = vsMatch
-        ? vsMatch[0].trim().replace(/\s+/g, " ")
-        : texto.split("\n").map(l => l.trim()).find(l => l.length > 3) || "";
-
-      // Categorías disponibles (puede ser "Category 1", "Front Category 2", etc.)
-      const catsEncontradas = [];
-      const catRegex = /(?:Front\s+)?Category\s+[1-4]/gi;
-      let m;
-      while ((m = catRegex.exec(texto)) !== null) {
-        if (!catsEncontradas.includes(m[0])) catsEncontradas.push(m[0].trim());
-      }
-      // También acepta formato CAT1-4
-      const catCorto = texto.match(/\bCAT\s*[1-4]\b/gi) || [];
-      catCorto.forEach(c => { if (!catsEncontradas.includes(c)) catsEncontradas.push(c); });
-
-      const categoria = catsEncontradas.length > 0
-        ? catsEncontradas.join(" / ")
-        : "N/A";
+      // El partido debe contener "Argentina" y formato "X vs Y"
+      const vsMatch = texto.match(/Argentina\s+vs\s+[\w\sÀ-ž]+|[\w\sÀ-ž]+\s+vs\s+Argentina/i);
+      if (!vsMatch) return null; // descartar si no es un partido real de Argentina
+      const partido = vsMatch[0].trim().replace(/\s+/g, " ");
 
       const buyEl = nodo.querySelector('a[href*="fifa"], a[href*="collect"], a[href*="ticket"]');
-      const textoDebug = texto.replace(/\s+/g, " ").substring(0, 300);
 
       return {
         partido: partido.substring(0, 80),
-        precios,
-        precioMinimo: Math.min(...precios),
-        categoria,
+        precioMinimo: precio,
         buyLink: buyEl ? buyEl.href : null,
-        textoDebug,
       };
     }
 
@@ -376,7 +350,7 @@ async function enviarResumen(fecha) {
     }),
     fetch(`https://ntfy.sh/${process.env.NTFY_TOPIC}`, {
       method: "POST",
-      headers: { "Title": `Resumen Tracker Argentina — ${fecha}`, "Tags": "bar_chart" },
+      headers: { "Title": `Resumen Tracker Argentina - ${fecha}`, "Tags": "bar_chart" },
       body: lineasNtfy,
     }),
   ]);
