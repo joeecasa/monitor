@@ -16,5 +16,7 @@ COPY package*.json ./
 RUN npm install --omit=dev
 
 COPY monitor.js .
+COPY monitor-tracker.js .
+COPY start.js .
 
-CMD ["node", "monitor.js"]
+CMD ["node", "start.js"]
