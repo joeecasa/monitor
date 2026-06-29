@@ -11,16 +11,20 @@
 
 const puppeteer = require("puppeteer");
 const { Resend } = require("resend");
+const { google } = require("googleapis");
 require("dotenv").config();
 
 const CONFIG = {
-  PRECIO_MAXIMO: 2000,         // USD — cambia según tu umbral
+  PRECIO_MAXIMO: 2000,
   INTERVALO_MINUTOS: 3,
   URL: "https://thegreatreviewer.com/wc-tracker",
   EMAIL: {
     destinatario: "j.casa.marquez@gmail.com",
   },
 };
+
+const SHEET_ID   = "16Rj3LfZkU-eWC2wd6FP3if3nPu32O6-Q-VB36_hGHwY";
+const SHEET_NAME = "Tracker";
 
 const C = {
   verde:    "\x1b[32m",
@@ -51,12 +55,12 @@ async function enviarNtfy({ partido, precio, categoria, buyLink }) {
   await fetch(`https://ntfy.sh/${topic}`, {
     method: "POST",
     headers: {
-      "Title":    `ARGENTINA ${categoria} a $${precio} USD`,
+      "Title":    `ARGENTINA desde $${precio} USD`,
       "Priority": "urgent",
       "Tags":     "soccer,rotating_light",
       "Click":    buyLink || CONFIG.URL,
     },
-    body: `${partido}\n${categoria} a $${precio} USD\nUmbral: $${CONFIG.PRECIO_MAXIMO} — ¡Comprá ahora!`,
+    body: `${partido}\nDesde $${precio} USD\nUmbral: $${CONFIG.PRECIO_MAXIMO} — ¡Comprá ahora!`,
   });
   log("Ntfy enviado al celu", C.verde);
 }
@@ -66,17 +70,75 @@ async function enviarEmail({ partido, precio, categoria, buyLink }) {
   await resend.emails.send({
     from: "Monitor Argentina <onboarding@resend.dev>",
     to: CONFIG.EMAIL.destinatario,
-    subject: `ALERTA Argentina — ${partido} | ${categoria} a $${precio} USD`,
+    subject: `ALERTA Argentina — ${partido} desde $${precio} USD`,
     html: `
       <h2>Entrada Argentina por debajo del umbral</h2>
       <p><strong>Partido:</strong> ${partido}</p>
-      <p><strong>Categoría:</strong> ${categoria}</p>
       <p><strong>Precio mínimo:</strong> $${precio} USD</p>
       <p><strong>Tu umbral:</strong> $${CONFIG.PRECIO_MAXIMO} USD</p>
       ${buyLink ? `<p><a href="${buyLink}" style="font-size:18px;font-weight:bold;color:#d40000;">COMPRAR AHORA</a></p>` : `<p><a href="${CONFIG.URL}">Ver en tracker</a></p>`}
     `,
   });
   log("Email enviado", C.verde);
+}
+
+// ──────────────────────────────────────────────
+//  Google Sheets
+// ──────────────────────────────────────────────
+
+async function getSheetsClient() {
+  const raw = process.env.GOOGLE_CREDENTIALS_JSON
+    ? process.env.GOOGLE_CREDENTIALS_JSON
+    : Buffer.from(process.env.GOOGLE_CREDENTIALS_B64, "base64").toString();
+  const auth = new google.auth.GoogleAuth({
+    credentials: JSON.parse(raw),
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+  return google.sheets({ version: "v4", auth });
+}
+
+async function inicializarSheetTracker() {
+  try {
+    const sheets = await getSheetsClient();
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!A1`,
+    });
+    if (!res.data.values) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SHEET_ID,
+        range: `${SHEET_NAME}!A1`,
+        valueInputOption: "RAW",
+        resource: { values: [["Fecha", "Hora", "Partido", "Precio Mín (USD)"]] },
+      });
+    }
+    log(`Sheets "${SHEET_NAME}" conectado`, C.cyan);
+  } catch (err) {
+    log(`Error iniciando Sheets: ${err.message}`, C.rojo);
+  }
+}
+
+async function escribirEnSheetTracker(dato) {
+  try {
+    const ahora = ahoraAR();
+    const sheets = await getSheetsClient();
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!A:D`,
+      valueInputOption: "RAW",
+      resource: {
+        values: [[
+          ahora.toLocaleDateString("es-AR"),
+          ahora.toLocaleTimeString("es-AR", { hour12: false }),
+          dato.partido,
+          dato.precioMinimo,
+        ]],
+      },
+    });
+    log("Sheets actualizado", C.cyan);
+  } catch (err) {
+    log(`Error Sheets: ${err.message}`, C.rojo);
+  }
 }
 
 // ──────────────────────────────────────────────
@@ -251,10 +313,82 @@ async function extraerDatos(page) {
 }
 
 // ──────────────────────────────────────────────
+//  Historial diario + resumen
+// ──────────────────────────────────────────────
+
+const historial = {}; // { "29/6/2026": [{ hora, partido, precio }, ...] }
+let resumenEnviadoHoy = null;
+
+function registrarEnHistorial(partido, precio) {
+  const ahora = ahoraAR();
+  const fecha = ahora.toLocaleDateString("es-AR");
+  const hora  = ahora.toLocaleTimeString("es-AR", { hour12: false });
+  if (!historial[fecha]) historial[fecha] = [];
+  historial[fecha].push({ hora, partido, precio });
+}
+
+async function enviarResumen(fecha) {
+  const entradas = historial[fecha] || [];
+  if (entradas.length === 0) return;
+
+  // Agrupar por partido
+  const porPartido = {};
+  for (const e of entradas) {
+    if (!porPartido[e.partido]) porPartido[e.partido] = [];
+    porPartido[e.partido].push(e.precio);
+  }
+
+  const filasHtml = Object.entries(porPartido).map(([partido, precios]) => {
+    const min    = Math.min(...precios);
+    const max    = Math.max(...precios);
+    const ultimo = precios[precios.length - 1];
+    return `<tr>
+      <td>${partido}</td>
+      <td>$${min}</td>
+      <td>$${max}</td>
+      <td>$${ultimo}</td>
+      <td>${precios.length}</td>
+    </tr>`;
+  }).join("");
+
+  const html = `
+    <h2>Resumen diario Tracker Argentina — ${fecha}</h2>
+    <p>Umbral: $${CONFIG.PRECIO_MAXIMO} USD | Lecturas totales: ${entradas.length}</p>
+    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse">
+      <tr style="background:#f0f0f0">
+        <th>Partido</th><th>Mínimo</th><th>Máximo</th><th>Último</th><th>Lecturas</th>
+      </tr>
+      ${filasHtml}
+    </table>
+  `;
+
+  const lineasNtfy = Object.entries(porPartido).map(([partido, precios]) =>
+    `${partido}: min $${Math.min(...precios)} / último $${precios[precios.length - 1]}`
+  ).join("\n");
+
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  await Promise.all([
+    resend.emails.send({
+      from: "Monitor Argentina <onboarding@resend.dev>",
+      to: CONFIG.EMAIL.destinatario,
+      subject: `Resumen diario Tracker Argentina — ${fecha}`,
+      html,
+    }),
+    fetch(`https://ntfy.sh/${process.env.NTFY_TOPIC}`, {
+      method: "POST",
+      headers: { "Title": `Resumen Tracker Argentina — ${fecha}`, "Tags": "bar_chart" },
+      body: lineasNtfy,
+    }),
+  ]);
+
+  log(`Resumen diario enviado (${entradas.length} lecturas)`, C.verde);
+}
+
+// ──────────────────────────────────────────────
 //  Ciclo principal
 // ──────────────────────────────────────────────
 
-// Clave: precio + categoria + bucket de 5 min → evita spam de la misma alerta
+// Clave: precio + bucket de 5 min → evita spam de la misma alerta
 const alertasEnviadas = new Set();
 
 async function revisar() {
@@ -293,8 +427,10 @@ async function revisar() {
       const color = esAlerta ? C.verde + C.bold : C.reset;
       const icono = esAlerta ? ">> ALERTA <<" : "-";
 
-      log(`  ${icono} ${partido.substring(0, 50)} | ${categoria}: $${precioMinimo} USD`, color);
-      if (categoria === "N/A") log(`    [debug] texto: ${d.textoDebug}`, C.amarillo);
+      log(`  ${icono} ${partido.substring(0, 50)} — desde $${precioMinimo} USD`, color);
+
+      registrarEnHistorial(partido, precioMinimo);
+      await escribirEnSheetTracker(d);
 
       if (esAlerta) {
         const bucket = Math.floor(Date.now() / (5 * 60 * 1000));
@@ -322,7 +458,19 @@ async function revisar() {
     await page.close();
   }
 
-  const proxima = new Date(ahoraAR().getTime() + CONFIG.INTERVALO_MINUTOS * 60 * 1000);
+  // Resumen a las 11:30
+  const ahora = ahoraAR();
+  const fecha = ahora.toLocaleDateString("es-AR");
+  if (ahora.getHours() === 11 && ahora.getMinutes() >= 30 && resumenEnviadoHoy !== fecha) {
+    resumenEnviadoHoy = fecha;
+    try {
+      await enviarResumen(fecha);
+    } catch (err) {
+      log(`Error enviando resumen: ${err.message}`, C.rojo);
+    }
+  }
+
+  const proxima = new Date(ahora.getTime() + CONFIG.INTERVALO_MINUTOS * 60 * 1000);
   log(`Próxima revisión: ${proxima.toLocaleTimeString("es-AR", { hour12: false })}`, C.reset);
   console.log("");
 }
@@ -344,5 +492,6 @@ console.log(`
 
 `);
 
+inicializarSheetTracker();
 revisar();
 setInterval(revisar, CONFIG.INTERVALO_MINUTOS * 60 * 1000);
