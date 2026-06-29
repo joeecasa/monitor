@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "monitor.js",
   "scripts": {
-    "start": "node monitor.js"
+    "start": "node start.js"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
